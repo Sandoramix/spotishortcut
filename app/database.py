@@ -43,7 +43,7 @@ class SpotifyDB():
         raw = self.session.current_user_playlists()
 
         for playlist in raw["items"]:
-            if playlist != None and playlist.get("owner", {}).get("id", None) == self.username:
+            if playlist is not None and playlist.get("owner", {}).get("id", None) == self.username:
 
                 self.updatePlaylist(playlist["id"])
                 userPlaylists.append(playlist["id"])
@@ -70,10 +70,8 @@ class SpotifyDB():
         if type(song) is tuple:
             song = [song]
 
-        self.exec('insert or ignore into song (song_id,name,artists,duration_ms) values '+','.join([
-            f'("{self.strEscape(str(s[0]))}","{self.strEscape(str(s[1]))}","{self.strEscape(str(s[2]))}","{self.strEscape(str(s[3]))}")'
-            for s in song
-        ]))
+        self.exec('insert or ignore into song (song_id, name, artists, duration_ms, popularity) values (?, ?, ?, ?, ?)', song)
+
 
     def addSongsToPlaylist(self, playlist_id, tracks:("str|tuple[str]")) -> None:
         if type(tracks) is tuple:
@@ -92,17 +90,16 @@ class SpotifyDB():
         localPlaylistSongsIds:list[str]=[s[0] for s in self.exec(f'select song from playlist_songs where playlist="{self.strEscape(playlist_id)}"',fetch=0) if s!=None]
 
 
-        diffTracks=[track for track in allSongsIds if track[0] not in localPlaylistSongsIds]
-        if len(diffTracks) ==0:
+        newSongsIds=[track for track in allSongsIds if track not in localPlaylistSongsIds]
+        if len(newSongsIds) ==0:
             return
-
-        diffIds=[s[0] for s in diffTracks]
 
         self.exec(f'delete from playlist_songs where playlist="{playlist_id}" and song not in ("'+'","'.join(allSongsIds)+'")')
 
+        newTracks = [song for song in tracks if song[0] in newSongsIds]
 
-        self.addSongsToPlaylist(playlist_id,diffIds)
-        self.saveTrack(diffTracks)
+        self.addSongsToPlaylist(playlist_id,newSongsIds)
+        self.saveTrack(newTracks)
 
 # -------------------------------------UpdateData----------------------------------------------
 
@@ -153,7 +150,8 @@ class SpotifyDB():
         s_name = object["name"]
         s_duration = object["duration_ms"]
         s_artists = ", ".join([i["name"] for i in object["artists"]])
-        return (s_id, s_name, s_artists, s_duration)
+        s_popularity = object["popularity"]
+        return (s_id, s_name, s_artists, s_duration, s_popularity)
 
     def playlist_has_song(self, playlist_id, song_id) -> bool:
         return self.database_has(table="playlist_songs", param1="playlist", value1=playlist_id, param2="song", value2=song_id)
